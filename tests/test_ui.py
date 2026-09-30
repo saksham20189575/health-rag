@@ -77,6 +77,18 @@ class Recorder:
         return self.body
 
 
+@pytest.fixture(autouse=True)
+def http_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test starts on the HTTP path, the way ``scripts/run_ui.py`` runs the page.
+
+    With neither variable set the page answers in-process (the Community
+    Cloud shape), which would load the real pipeline here. The ``in_process``
+    fixture overrides this with ``CHAT_IN_PROCESS=1``.
+    """
+    monkeypatch.delenv(view.IN_PROCESS_ENV, raising=False)
+    monkeypatch.setenv(client.API_BASE_URL_ENV, "http://api.test")
+
+
 @pytest.fixture
 def recorder(monkeypatch: pytest.MonkeyPatch) -> Recorder:
     stub = Recorder(body=answer_body(section("cold-food-storage", 51, LEFTOVERS_CLAIM)))
@@ -342,10 +354,11 @@ def test_an_unreachable_api_is_shown_as_an_error(page: AppTest, recorder: Record
 # --- in-process (deployment plan, phase D3) ------------------------------------
 
 
-def test_the_http_path_is_the_default(
+def test_a_configured_api_url_selects_the_http_path(
     monkeypatch: pytest.MonkeyPatch, page: AppTest, recorder: Recorder
 ) -> None:
     monkeypatch.delenv(view.IN_PROCESS_ENV, raising=False)
+    monkeypatch.setenv(client.API_BASE_URL_ENV, "http://127.0.0.1:8000")
     stub = FakePipeline(body=answer_body())
     monkeypatch.setattr(view, "in_process_pipeline", lambda: stub)
 
@@ -353,6 +366,48 @@ def test_the_http_path_is_the_default(
 
     assert recorder.calls == [("How long do leftovers keep?", None)]
     assert stub.calls == []
+
+
+def test_neither_variable_set_is_in_process_the_community_cloud_shape(
+    monkeypatch: pytest.MonkeyPatch, page: AppTest, recorder: Recorder, tmp_path: Path
+) -> None:
+    """A bare ``streamlit run`` with no mode secret must not post to 127.0.0.1:8000."""
+    monkeypatch.delenv(view.IN_PROCESS_ENV, raising=False)
+    monkeypatch.delenv(client.API_BASE_URL_ENV, raising=False)
+    stub = FakePipeline(body=answer_body(section("cold-food-storage", 51, LEFTOVERS_CLAIM)))
+    monkeypatch.setattr(view, "in_process_pipeline", lambda: stub)
+    monkeypatch.setattr(view, "INDEX_DIR", tmp_path)
+
+    ask(page, "How long can I keep cooked leftovers in the fridge?")
+
+    assert not page.exception
+    assert stub.calls == [("How long can I keep cooked leftovers in the fridge?", None)]
+    assert recorder.calls == []
+    assert not any("Could not reach the chat API" in error for error in texts(page.error))
+    assert LEFTOVERS_CLAIM in texts(page.markdown)
+
+
+@pytest.mark.parametrize(
+    ("flag", "base_url", "expected"),
+    [
+        (None, None, True),  # bare `streamlit run`: Community Cloud
+        (None, "http://127.0.0.1:8000", False),  # scripts/run_ui.py
+        ("1", "http://127.0.0.1:8000", True),  # the flag wins over the URL
+        ("0", None, False),  # the flag wins over the missing URL
+        ("", None, True),  # an empty flag is unset
+        ("", "http://127.0.0.1:8000", False),
+    ],
+)
+def test_in_process_is_decided_by_the_flag_then_the_api_url(
+    monkeypatch: pytest.MonkeyPatch, flag: str | None, base_url: str | None, expected: bool
+) -> None:
+    for name, value in ((view.IN_PROCESS_ENV, flag), (client.API_BASE_URL_ENV, base_url)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+
+    assert view.in_process() is expected
 
 
 @pytest.mark.parametrize("value", ["1", "true", "YES", " on "])
@@ -363,9 +418,10 @@ def test_truthy_values_turn_the_in_process_path_on(
     assert view.in_process()
 
 
-@pytest.mark.parametrize("value", ["", "0", "false", "no"])
-def test_other_values_leave_the_http_path(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+@pytest.mark.parametrize("value", ["0", "false", "no"])
+def test_falsy_values_force_the_http_path(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     monkeypatch.setenv(view.IN_PROCESS_ENV, value)
+    monkeypatch.delenv(client.API_BASE_URL_ENV, raising=False)
     assert not view.in_process()
 
 
@@ -502,7 +558,7 @@ def test_a_missing_secrets_file_is_not_an_error(monkeypatch: pytest.MonkeyPatch)
 
     view.load_secrets_into_environment()
 
-    assert not view.in_process()
+    assert all(key not in view.os.environ for key in view.SECRET_ENV_KEYS)
 
 
 # --- client -------------------------------------------------------------------

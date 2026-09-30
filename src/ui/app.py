@@ -10,9 +10,12 @@ Start the API first, then the page:
     uvicorn src.api.main:app
     python scripts/run_ui.py
 
-On Streamlit Community Cloud there is no second process. Set
-``CHAT_IN_PROCESS=1`` (a secret) and the page calls the pipeline directly;
-see docs/deployment-plan.md. This file is the deploy entrypoint.
+On Streamlit Community Cloud there is no second process. The host runs
+``streamlit run src/ui/app.py`` with neither ``CHAT_API_BASE_URL`` nor
+``CHAT_IN_PROCESS`` set, and the page then calls the pipeline directly; see
+``src/ui/view.in_process`` and docs/deployment-plan.md. This file is the
+deploy entrypoint. Only ``GROQ_API_KEY`` (and ``GROQ_MODEL``) are needed as
+secrets.
 """
 
 from __future__ import annotations

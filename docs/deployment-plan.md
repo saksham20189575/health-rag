@@ -45,14 +45,19 @@ flowchart LR
 
 ### Tasks
 
-1. Keep local start as it is: `uvicorn src.api.main:app`, then `python scripts/run_ui.py`. That path keeps using `CHAT_API_BASE_URL` and `POST /chat`.
-2. Add a cloud switch, off unless set: `CHAT_IN_PROCESS=1`. When it is set, `view.ask` calls the pipeline and does not open a socket.
+1. Keep local start as it is: `uvicorn src.api.main:app`, then `python scripts/run_ui.py`. The launcher sets `CHAT_API_BASE_URL` for the page (the local uvicorn address unless overridden), and that path keeps using `POST /chat`.
+2. Make the mode self-selecting in `view.in_process`, so the deploy cannot land on the HTTP path by accident:
+   - `CHAT_IN_PROCESS` set: truthy is in-process, anything else is HTTP.
+   - Unset, `CHAT_API_BASE_URL` set: HTTP.
+   - Neither set: in-process. This is the bare `streamlit run src/ui/app.py` that Community Cloud executes, and nothing listens on `127.0.0.1:8000` there.
+
+   The first deploy did depend on a `CHAT_IN_PROCESS = "1"` secret, and with that secret absent the page posted to `127.0.0.1:8000` and every question showed "Could not reach the chat API". The rule above removes that failure mode; the secret is now optional.
 3. Do not shell out to uvicorn from the Streamlit script. A second process is what this host does not keep alive.
 
 ### Exit criteria
 
-- With the variable unset, the page still posts to the API.
-- With the variable set, a question never calls `client.post_chat`.
+- Through `python scripts/run_ui.py`, or with `CHAT_API_BASE_URL` set, the page posts to the API.
+- With neither variable set, or with `CHAT_IN_PROCESS=1`, a question never calls `client.post_chat`.
 
 ---
 
@@ -124,7 +129,7 @@ flowchart LR
 2. Build the pipeline once per process with `st.cache_resource`. Constructing `AnswerPipeline()` loads BGE on the first retrieve (`src/rag/retriever.py`), not at import. Do not call `answer` at import time, so the disclaimer and the document picker render before the model download.
 3. On the first question, use a spinner that says the search model is loading. Later questions keep the existing “Searching the guidance…” spinner. The Hugging Face download goes to the default cache on the container. A rebuild or a cold container fetches it again.
 4. Before the first generate, copy `GROQ_API_KEY` and `GROQ_MODEL` from `st.secrets` into `os.environ` when the environment does not already have them. `GroqClaimGenerator` reads the environment (`src/rag/generator.py`). Community Cloud also injects top-level secrets as environment variables; the copy covers a local `secrets.toml` run.
-5. Set `CHAT_IN_PROCESS=1` for the cloud app only, as a secret or as the first lines of the cloud entry. Do not default it on, or `python scripts/run_ui.py` stops talking to the API.
+5. No mode secret is required for the cloud app: with `CHAT_API_BASE_URL` unset the page is in-process (phase D0). `CHAT_IN_PROCESS=1` may still be set to force it; `python scripts/run_ui.py` keeps talking to the API because it sets `CHAT_API_BASE_URL`.
 6. Add a test that stubs `AnswerPipeline.answer` and asserts `ask` returns that body’s `type` when the variable is set, and that `post_chat` is not called. The existing UI tests should still pass with the variable unset.
 
 `src/ui/app.py` already puts the repo root on `sys.path` and calls `main()` at import. That is a valid Community Cloud entrypoint. No second `streamlit_app.py` is required.
@@ -153,8 +158,9 @@ flowchart LR
    ```toml
    GROQ_API_KEY = "the key from the local .env"
    GROQ_MODEL = "openai/gpt-oss-20b"
-   CHAT_IN_PROCESS = "1"
    ```
+
+   `CHAT_IN_PROCESS` is optional (phase D0): leave it out, or set it to `"1"`. Do not set `CHAT_API_BASE_URL` on the host, since that would switch the page back to HTTP.
 
    Set `GROQ_MODEL`. The code default is `openai/gpt-oss-120b` (`src/constants.py`), and on 2026-09-30 that model returned malformed JSON in Groq's JSON mode for the leftovers and free-sugars questions (a list with keys spilled out as bare strings), so every in-corpus question came back `generation_unavailable` / `invalid_json`. `openai/gpt-oss-20b` returned the expected two-section answer. Re-check the 120b model before removing this override.
 2. Add `.streamlit/secrets.toml` to `.gitignore`. A local file with that name is how you try the in-process page before pushing. Do not commit it. `.env` stays ignored.

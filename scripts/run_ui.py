@@ -7,7 +7,10 @@ over HTTP, so start that first:
 
 Point the page somewhere else with ``CHAT_API_BASE_URL``, or with
 ``--api-base-url``, which sets the same variable for the Streamlit process.
-Any other argument is passed through to ``streamlit run``.
+This launcher always sets ``CHAT_API_BASE_URL`` for the page, because a bare
+``streamlit run`` with the variable unset answers in-process (the Community
+Cloud shape; see ``src/ui/view.in_process``). ``CHAT_IN_PROCESS`` still wins
+when it is set. Any other argument is passed through to ``streamlit run``.
 """
 
 from __future__ import annotations
@@ -37,10 +40,10 @@ def main() -> None:
     args, passthrough = parser.parse_known_args()
 
     environment = dict(os.environ)
-    if args.api_base_url:
-        environment[API_BASE_URL_ENV] = args.api_base_url
+    # Set even when it is the default, so the page takes the HTTP path.
+    environment[API_BASE_URL_ENV] = args.api_base_url or api_base_url()
 
-    print(f"Chat API: {args.api_base_url or api_base_url()}")
+    print(f"Chat API: {environment[API_BASE_URL_ENV]}")
     command = [sys.executable, "-m", "streamlit", "run", str(APP_PATH), *passthrough]
     raise SystemExit(subprocess.call(command, env=environment))
 

@@ -12,11 +12,16 @@ referral and no document list, because the corpus was not consulted.
 
 Two ways to reach the pipeline (docs/deployment-plan.md, phases D0 and D3):
 
-- Default: ``client.post_chat`` over HTTP to the FastAPI server. This is the
-  laptop run, ``uvicorn`` first and then ``python scripts/run_ui.py``.
-- ``CHAT_IN_PROCESS=1``: call ``AnswerPipeline.answer`` in this process and
-  never open a socket. Streamlit Community Cloud runs one process, so this
-  is the cloud setting. Off unless set, so the local run is unchanged.
+- HTTP: ``client.post_chat`` to the FastAPI server. This is the laptop run,
+  ``uvicorn`` first and then ``python scripts/run_ui.py``, which sets
+  ``CHAT_API_BASE_URL`` for the page.
+- In-process: call ``AnswerPipeline.answer`` here and never open a socket.
+  Streamlit Community Cloud runs one process and nothing listens on
+  ``127.0.0.1:8000`` there, so this is what a bare ``streamlit run`` gets.
+
+``in_process`` decides: ``CHAT_IN_PROCESS`` set is obeyed; otherwise a set
+``CHAT_API_BASE_URL`` means HTTP, and neither set means in-process. The
+deploy therefore works with no mode secret at all.
 """
 
 from __future__ import annotations
@@ -116,14 +121,23 @@ def load_secrets_into_environment() -> None:
         try:
             value = st.secrets.get(key)
         except Exception:  # noqa: BLE001 - StreamlitSecretNotFoundError, or no file at all
-            return
+            continue
         if value is not None and str(value).strip():
             os.environ[key] = str(value).strip()
 
 
 def in_process() -> bool:
-    """``True`` when ``CHAT_IN_PROCESS`` is set to a truthy value."""
-    return os.environ.get(IN_PROCESS_ENV, "").strip().lower() in _TRUE_VALUES
+    """Whether a question is answered in this process instead of over HTTP.
+
+    ``CHAT_IN_PROCESS`` set to anything decides: truthy is in-process, the
+    rest is HTTP. Unset, the page is in-process unless ``CHAT_API_BASE_URL``
+    names an API. A bare ``streamlit run src/ui/app.py``, which is what
+    Community Cloud executes, never tries to reach a server that is not there.
+    """
+    flag = os.environ.get(IN_PROCESS_ENV, "").strip().lower()
+    if flag:
+        return flag in _TRUE_VALUES
+    return not os.environ.get(client.API_BASE_URL_ENV, "").strip()
 
 
 @st.cache_resource(show_spinner=False)
