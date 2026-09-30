@@ -1,0 +1,14 @@
+.env
+.venv/
+# Build artefacts. data/index/ is deliberately NOT ignored: the deployed app
+# (docs/deployment-plan.md, phase D1) answers from the committed Chroma
+# collection and never rebuilds it on the host.
+data/raw/
+data/parsed/
+data/chunks/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Streamlit secrets for a local in-process run. The cloud copy lives in the
+# Community Cloud secrets box, never in git.
+.streamlit/secrets.toml

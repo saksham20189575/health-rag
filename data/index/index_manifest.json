@@ -1,0 +1,9 @@
+{
+  "model_name": "BAAI/bge-small-en-v1.5",
+  "dimension": 384,
+  "max_sequence_length": 512,
+  "max_tokens": 479,
+  "chunk_count": 372,
+  "fingerprint": "827475e091bad9095b2f721d1de82c400a6d4a9a4119f8f2e7f329c9f47906c1",
+  "embedded_at": "2026-09-27T09:13:57+00:00"
+}

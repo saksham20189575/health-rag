@@ -1,0 +1,23 @@
+# Streamlit Community Cloud install list (docs/deployment-plan.md, phase D2).
+#
+# Community Cloud installs the first dependency file it finds, and a file in
+# the entrypoint's directory (src/ui/app.py lives here) wins over the one at
+# the repo root. So this slim list is what the host installs, and the full
+# ../../requirements.txt stays the local file for fetch, parse, tests, and the
+# FastAPI server. None of those are imported on the answer path.
+#
+# Pins match the local .venv that built data/index/. The CPU wheel index keeps
+# PyTorch small; the default PyPI wheel drags in CUDA libraries the host
+# cannot use and would blow the memory and disk budget.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+streamlit==1.64.0
+chromadb==1.5.9
+sentence-transformers==6.1.0
+torch==2.14.0
+transformers==5.17.0
+huggingface_hub==1.33.0
+groq==1.7.0
+python-dotenv==1.2.3
+pydantic==2.13.5
+httpx==0.28.1

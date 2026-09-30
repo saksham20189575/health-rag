@@ -1,0 +1,6 @@
+# Checked in (docs/deployment-plan.md, phase D4). No port and no server
+# section: Community Cloud sets those itself. Secrets live in secrets.toml,
+# which is gitignored.
+
+[browser]
+gatherUsageStats = false
